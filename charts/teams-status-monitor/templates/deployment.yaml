@@ -1,0 +1,143 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "teams-status-monitor.fullname" . }}-backend
+  labels:
+    {{- include "teams-status-monitor.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "teams-status-monitor.selectorLabels" . | nindent 6 }}
+      app: {{ include "teams-status-monitor.fullname" . }}-backend
+  template:
+    metadata:
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        app: {{ include "teams-status-monitor.fullname" . }}-backend
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "teams-status-monitor.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: {{ .Chart.Name }}-backend
+          image: {{ .Values.app.backend.image.repository }}:{{ .Values.app.backend.image.tag }}
+          imagePullPolicy: {{ .Values.app.backend.image.pullPolicy }}
+          env:
+            - name: LOG_LEVEL
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "teams-status-monitor.fullname" . }}-backend-conf
+                  key: logLevel
+            - name: GIN_MODE
+              value: release
+            - name: CONFIG_PATH
+              value: /etc/config
+            - name: SECRET_PATH
+              value: /etc/secret
+          ports:
+            - containerPort: 8000
+              name: http
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8000
+              scheme: HTTP
+            initialDelaySeconds: 15
+            periodSeconds: 60
+            timeoutSeconds: 3
+          volumeMounts:
+            - name: backend-config
+              mountPath: /etc/config/
+            - name: backend-secrets
+              mountPath: /etc/secret/
+      volumes:
+        - name: backend-config
+          configMap:
+            name: {{ include "teams-status-monitor.fullname" . }}-backend-conf
+        - name: backend-secrets
+          secret:
+            secretName: backend-secrets
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "teams-status-monitor.fullname" . }}-frontend
+  labels:
+    {{- include "teams-status-monitor.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "teams-status-monitor.selectorLabels" . | nindent 6 }}
+      app: {{ include "teams-status-monitor.fullname" . }}-frontend
+  template:
+    metadata:
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        app: {{ include "teams-status-monitor.fullname" . }}-frontend
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "teams-status-monitor.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: {{ .Chart.Name }}-frontend
+          image: {{ .Values.app.frontend.image.repository }}:{{ .Values.app.frontend.image.tag }}
+          imagePullPolicy: {{ .Values.app.frontend.image.pullPolicy }}
+          env:
+            - name: API_FQDN
+              value: {{ .Values.common.fqdn }}
+          ports:
+            - containerPort: 80
+              name: http
+              protocol: TCP
+          volumeMounts:
+            - name: nginx-confs
+              mountPath: /etc/nginx/conf.d
+      volumes:
+        - name: nginx-confs
+          configMap:
+            name: {{ include "teams-status-monitor.fullname" . }}-nginx-conf
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

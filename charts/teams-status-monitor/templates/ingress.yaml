@@ -1,0 +1,33 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  labels:
+    app: {{ include "teams-status-monitor.fullname" . }}
+  name: {{ include "teams-status-monitor.fullname" . }}
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    kubernetes.io/ingress.class: "traefik"
+spec:
+  rules:
+  - host: {{ .Values.common.fqdn }}
+    http:
+      paths:
+      - path: /api
+        pathType: Prefix
+        backend:
+          service:
+            name: {{ include "teams-status-monitor.fullname" . }}-service-backend
+            port:
+              number: 80     
+      - path: / # Catch-all rule for anything not matching /api
+        pathType: Prefix
+        backend:
+          service:
+            name: {{ include "teams-status-monitor.fullname" . }}-service-frontend
+            port:
+              number: 80
+  tls:
+  - hosts:
+    - {{ .Values.common.fqdn }}
+    secretName: letsencrypt-prod
+

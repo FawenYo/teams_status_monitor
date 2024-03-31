@@ -1,0 +1,12 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "teams-status-monitor.fullname" . }}
+spec:
+  selector:
+    matchLabels:
+      app: {{ include "teams-status-monitor.fullname" . }}-backend
+  endpoints:
+    - port: app
+      interval: 1s
+      path: /metrics

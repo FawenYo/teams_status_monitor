@@ -1,0 +1,31 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "teams-status-monitor.fullname" . }}-service-backend
+  labels:
+    app: {{ include "teams-status-monitor.fullname" . }}-backend
+spec:
+  type: ClusterIP
+  ports:
+    - name: app
+      port: 80
+      targetPort: 8000
+      protocol: TCP
+  selector:
+    app: {{ include "teams-status-monitor.fullname" . }}-backend
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "teams-status-monitor.fullname" . }}-service-frontend
+  labels:
+    app: {{ include "teams-status-monitor.fullname" . }}-frontend
+spec:
+  type: ClusterIP
+  ports:
+    - name: app
+      port: 80
+      targetPort: 80
+      protocol: TCP
+  selector:
+    app: {{ include "teams-status-monitor.fullname" . }}-frontend
