@@ -1,53 +1,66 @@
-use log::LevelFilter;
-use log4rs::{
-    append::console::ConsoleAppender,
-    append::file::FileAppender,
-    config::{Appender, Config, Root},
-    encode::pattern::PatternEncoder,
-};
-use std::path::PathBuf;
+use std::{fs::File, sync::Arc};
+use tracing_subscriber::{filter, prelude::*};
 
-pub fn setup(log_level: String) {
-    // Define the pattern for the log messages.
-    let pattern = "{d} {l} - {m}\n";
+/// app_name **must** match Cargo.toml's package.name, or else app-level logging won't work properly!
+pub fn setup(log_level: String, app_name: impl AsRef<str>) {
+    let stdout_log = tracing_subscriber::fmt::layer()
+        .pretty()
+        .event_format(tracing_subscriber::fmt::format::Format::default().compact());
 
-    // Create a console appender.
-    let console_appender = ConsoleAppender::builder()
-        .encoder(Box::new(PatternEncoder::new(pattern)))
-        .build();
+    let log_file_path = format!(
+        ".teams_stauts_monitor/{}_{}.log",
+        app_name.as_ref(),
+        chrono::Utc::now().format("%Y_%m_%d")
+    );
 
-    // Define the path for the log file. Make sure the directory exists.
-    let mut log_file_path = dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
-    log_file_path.push(".teams_stauts_monitor");
-    let date = chrono::Local::now().format("%Y-%m-%d");
-    log_file_path.push(format!("app_{}.log", date));
-    let file_appender = FileAppender::builder()
-        .encoder(Box::new(PatternEncoder::new(pattern)))
-        .build(log_file_path)
-        .expect("Failed to create file appender");
+    // A layer that logs events to a file.
+    let file = File::create(log_file_path);
+    let file = match file {
+        Ok(file) => file,
+        Err(error) => panic!("Error: {:?}", error),
+    };
+    let debug_log = tracing_subscriber::fmt::layer()
+        .with_ansi(false)
+        .with_file(true)
+        .with_target(true)
+        .with_line_number(true)
+        .with_writer(Arc::new(file));
+
+    // A layer that collects metrics using specific events.
+    //let metrics_layer = /* ... */ filter::LevelFilter::DEBUG;
 
     // Convert the log level string to the appropriate enum. Default to Info if the conversion fails.
     let log_level_filter = match log_level.to_lowercase().as_str() {
-        "error" => LevelFilter::Error,
-        "warn" => LevelFilter::Warn,
-        "info" => LevelFilter::Info,
-        "debug" => LevelFilter::Debug,
-        "trace" => LevelFilter::Trace,
-        _ => LevelFilter::Info,
+        "error" => filter::LevelFilter::ERROR,
+        "warn" => filter::LevelFilter::WARN,
+        "info" => filter::LevelFilter::INFO,
+        "debug" => filter::LevelFilter::DEBUG,
+        "trace" => filter::LevelFilter::TRACE,
+        _ => filter::LevelFilter::INFO,
     };
 
-    // Construct the log4rs config.
-    let config = Config::builder()
-        .appender(Appender::builder().build("console", Box::new(console_appender)))
-        .appender(Appender::builder().build("file", Box::new(file_appender)))
-        .build(
-            Root::builder()
-                .appender("console")
-                .appender("file")
-                .build(log_level_filter),
-        )
-        .expect("Failed to build config");
+    let metrics_layer = /* ... */ log_level_filter;
 
-    // Initialize log4rs with the config.
-    log4rs::init_config(config).expect("Failed to initialize log4rs");
+    tracing_subscriber::registry()
+        .with(
+            stdout_log
+                // Add an `INFO` filter to the stdout logging layer
+                .with_filter(log_level_filter)
+                // Combine the filtered `stdout_log` layer with the
+                // `debug_log` layer, producing a new `Layered` layer.
+                .and_then(debug_log)
+                // Add a filter to *both* layers that rejects spans and
+                // events whose targets start with `metrics`.
+                .with_filter(filter::filter_fn(|metadata| {
+                    !metadata.target().starts_with("metrics")
+                })),
+        )
+        .with(
+            // Add a filter to the metrics label that *only* enables
+            // events whose targets start with `metrics`.
+            metrics_layer.with_filter(filter::filter_fn(|metadata| {
+                metadata.target().starts_with("metrics")
+            })),
+        )
+        .init();
 }

@@ -38,7 +38,7 @@ async fn main() {
     let first_open = true;
 
     // Set up the logger
-    utils::logging::setup(log_level);
+    let _ = utils::logging::setup(log_level, APP_NAME);
 
     // Initialize the previous meeting status
     let mut previous_meeting_status = false;

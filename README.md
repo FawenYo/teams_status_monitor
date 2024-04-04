@@ -2,6 +2,29 @@
 
 This is a simple PoC to monitor the status of a team in Microsoft Teams. It uses the Microsoft WebSocket API (Reference: https://lostdomain.notion.site/Microsoft-Teams-WebSocket-API-5c042838bc3e4731bdfe679e864ab52a) to subscribe to the status of a team and then sends a HTTP request to our backend server to update the status of the team.
 
+## Data Flow
+
+```plantuml
+@startuml
+participant Client
+participant Teams
+participant Backend
+participant Frontend
+
+Client -> Teams: Step 1: Subscribe to the team status
+Teams -> Client: Step 2: When the meeting status changes, send the status to the client
+Client -> Backend: Step 3: HTTP POST request to update the status
+Frontend -> Backend: Step 4: HTTP GET request to get the status
+@enduml
+```
+
+Steps | Description
+--- | ---
+Step 1 | The client subscribes to the team status with the WebSocket API
+Step 2 | When the meeting status changes, the WebSocket API sends the status to the client
+Step 3 | The client sends a HTTP POST request to the backend server to update the status
+Step 4 | When the user accesses the frontend URL, the frontend sends a HTTP GET request to the backend server to get the status
+
 ## Getting Started
 
 ### Prerequisites
