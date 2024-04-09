@@ -35,20 +35,12 @@ Common labels
 */}}
 {{- define "teams-status-monitor.labels" -}}
 helm.sh/chart: {{ include "teams-status-monitor.chart" . }}
-{{ include "teams-status-monitor.selectorLabels" . }}
 {{- if .Chart.AppVersion }}
 app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
 {{- end }}
 app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- end }}
 
-{{/*
-Selector labels
-*/}}
-{{- define "teams-status-monitor.selectorLabels" -}}
-app.kubernetes.io/name: {{ include "teams-status-monitor.name" . }}
-app.kubernetes.io/instance: {{ .Release.Name }}
-{{- end }}
 
 {{/*
 Create the name of the service account to use

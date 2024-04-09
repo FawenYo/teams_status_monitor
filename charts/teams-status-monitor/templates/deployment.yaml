@@ -10,7 +10,6 @@ spec:
   {{- end }}
   selector:
     matchLabels:
-      {{- include "teams-status-monitor.selectorLabels" . | nindent 6 }}
       app: {{ include "teams-status-monitor.fullname" . }}-backend
   template:
     metadata:
@@ -19,6 +18,7 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       labels:
+        {{- include "teams-status-monitor.labels" . | nindent 8 }}
         app: {{ include "teams-status-monitor.fullname" . }}-backend
     spec:
       {{- with .Values.imagePullSecrets }}
@@ -93,7 +93,6 @@ spec:
   {{- end }}
   selector:
     matchLabels:
-      {{- include "teams-status-monitor.selectorLabels" . | nindent 6 }}
       app: {{ include "teams-status-monitor.fullname" . }}-frontend
   template:
     metadata:
@@ -102,6 +101,7 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       labels:
+        {{- include "teams-status-monitor.labels" . | nindent 8 }}
         app: {{ include "teams-status-monitor.fullname" . }}-frontend
     spec:
       {{- with .Values.imagePullSecrets }}
