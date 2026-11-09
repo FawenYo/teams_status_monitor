@@ -29,7 +29,33 @@ Step 4 | When the user accesses the frontend URL, the frontend sends a HTTP GET 
 
 ### Prerequisites
 
-- Make sure you can enable the Third-party app API in your Microsoft Teams so that you can scrape the meeting status with the WebSocket API. You can enable this by going to the `Settings` -> `Privacy` -> `Third-party app API` and enable the API.
+- **Windows / Linux**: Make sure you can enable the Third-party app API in your Microsoft Teams so that you can scrape the meeting status with the WebSocket API. You can enable this by going to the `Settings` -> `Privacy` -> `Third-party app API` and enable the API.
+- **macOS**: No Teams setting is needed. See [Meeting detection on macOS](#meeting-detection-on-macos).
+
+### Meeting detection on macOS
+
+**Why:** On recent new-Teams builds for macOS (observed on `26276.505`), Teams no longer starts the local WebSocket server on `localhost:8124` even when the Third-party app API is enabled. Its log shows `ThirdPartyDevicesModule: third_party_devices_manager_ is not available`, and the client only gets `Connection refused (os error 61)`.
+
+**How it works:** During a call, Teams holds macOS power assertions named `"Microsoft Teams Call in progress"` (`NoIdleSleepAssertion` / `NoDisplaySleepAssertion`). You can see them with:
+
+```bash
+pmset -g assertions | grep "Teams Call in progress"
+```
+
+On macOS, the client runs `/usr/bin/pmset -g assertions` every 10 seconds (`PMSET_POLL_INTERVAL` in `client/src/main.rs`). It reports in-meeting when a line owned by the `MSTeams` process contains that assertion name (`utils::assertions::teams_call_in_progress` in `client/src/utils/assertions.rs`). If the output has no `Listed by owning process:` header (empty or truncated read), the poll is skipped and the previous status is kept, so a bad read never reports "meeting ended". It sends a status only when the status changes and once at startup, so the existing notify loop in `main` behaves as it did with the WebSocket. The POST payload to the backend is unchanged.
+
+**Design decisions:**
+- The platform is chosen at compile time with `#[cfg(target_os = "macos")]`. Other platforms keep the WebSocket client (`meeting_monitoring`) because the 8124 API is not known to be broken there.
+- We use `pmset` rather than microphone usage, because another app using the microphone would cause false positives. We also do not use window titles: meeting windows are named by UUID, and reading them needs Accessibility permission.
+- `pmset` is called by absolute path so that `PATH` cannot redirect it.
+
+**Limits:**
+- The client only knows whether a call is in progress. Mute, camera, and hand-raise state are not available.
+- Any Teams call counts, including 1:1 calls, not only scheduled meetings.
+- If `pmset` keeps failing, the last known status is kept and an error is logged every poll.
+- If Microsoft renames the assertion string, detection stops silently. Check the `pmset` output and update `TEAMS_CALL_ASSERTION` in `client/src/utils/assertions.rs`.
+
+**Tests:** `cd client && cargo test` runs the parser tests on macOS. They cover an in-call output, a no-call output, empty and truncated output (returns `None`), a non-Teams process that uses the same assertion name, and a different assertion held by Teams.
 
 ### Installation
 
