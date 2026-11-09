@@ -31,6 +31,7 @@ Step 4 | When the user accesses the frontend URL, the frontend sends a HTTP GET 
 
 - **Windows / Linux**: Make sure you can enable the Third-party app API in your Microsoft Teams so that you can scrape the meeting status with the WebSocket API. You can enable this by going to the `Settings` -> `Privacy` -> `Third-party app API` and enable the API.
 - **macOS**: No Teams setting is needed. See [Meeting detection on macOS](#meeting-detection-on-macos).
+- The client writes logs to `.teams_stauts_monitor/` under the current working directory (created automatically if missing).
 
 ### Meeting detection on macOS
 
