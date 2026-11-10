@@ -1,4 +1,4 @@
-use std::{fs::File, sync::Arc};
+use std::{fs::OpenOptions, sync::Arc};
 use tracing_subscriber::{filter, prelude::*};
 
 /// app_name **must** match Cargo.toml's package.name, or else app-level logging won't work properly!
@@ -7,14 +7,20 @@ pub fn setup(log_level: String, app_name: impl AsRef<str>) {
         .pretty()
         .event_format(tracing_subscriber::fmt::format::Format::default().compact());
 
+    let log_dir = ".teams_stauts_monitor";
     let log_file_path = format!(
-        ".teams_stauts_monitor/{}_{}.log",
+        "{}/{}_{}.log",
+        log_dir,
         app_name.as_ref(),
         chrono::Utc::now().format("%Y_%m_%d")
     );
 
+    if let Err(error) = std::fs::create_dir_all(log_dir) {
+        panic!("Failed to create log directory {}: {:?}", log_dir, error);
+    }
+
     // A layer that logs events to a file.
-    let file = File::create(log_file_path);
+    let file = OpenOptions::new().create(true).append(true).open(log_file_path);
     let file = match file {
         Ok(file) => file,
         Err(error) => panic!("Error: {:?}", error),

@@ -2,16 +2,11 @@ mod utils;
 
 use std::time::Duration;
 
-use clap;
-use futures::stream::StreamExt;
-use log::{debug, error, info, trace};
-use reqwest;
-use serde_json::Value;
+use log::{debug, error, info};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use tokio;
-use tokio_tungstenite;
-use url::Url;
+#[cfg(not(target_os = "macos"))]
+use {futures::stream::StreamExt, log::trace, serde_json::Value, url::Url};
 
 const APP_NAME: &str = "Teams Meeting Monitor";
 const APP_VERSION: &str = "1.0.0";
@@ -43,13 +38,22 @@ async fn main() {
     // Initialize the previous meeting status
     let mut previous_meeting_status = false;
     let meeting_in_progress_flag = Arc::new(AtomicBool::new(false));
-    let ws_url = format!("ws://localhost:8124?protocol-version=2.0.0&manufacturer={}&device=teams_meeting_monitor&app={}&app-version={}", AUTHOR, APP_NAME, APP_VERSION);
+    let mut notify_task: Option<tokio::task::JoinHandle<()>> = None;
     let (tx, mut rx) = tokio::sync::mpsc::channel(32);
 
-    // Spawn a task for continuous WebSocket monitoring
+    // Teams on macOS no longer starts the local 8124 API reliably, so read its power assertion instead
+    #[cfg(target_os = "macos")]
     tokio::spawn(async move {
-        meeting_monitoring(ws_url, tx).await;
+        pmset_monitoring(tx).await;
     });
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        let ws_url = format!("ws://localhost:8124?protocol-version=2.0.0&manufacturer={}&device=teams_meeting_monitor&app={}&app-version={}", AUTHOR, APP_NAME, APP_VERSION);
+        tokio::spawn(async move {
+            meeting_monitoring(ws_url, tx).await;
+        });
+    }
 
     // Handle received messages (indications of meeting status)
     while let Some(meeting_in_progress) = rx.recv().await {
@@ -68,7 +72,7 @@ async fn main() {
 
                     // Notify the server every minute
                     let flag_clone = meeting_in_progress_flag.clone();
-                    tokio::spawn(async move {
+                    notify_task = Some(tokio::spawn(async move {
                         loop {
                             if !flag_clone.load(Ordering::SeqCst) {
                                 // If the flag is false, break the loop
@@ -82,13 +86,17 @@ async fn main() {
                             }
                             tokio::time::sleep(Duration::from_secs(60)).await; // Wait for one minute
                         }
-                    });
+                    }));
                 }
             }
             // Update the previous meeting status
             previous_meeting_status = true;
         } else {
             meeting_in_progress_flag.store(false, Ordering::SeqCst);
+            // The flag alone is only seen after the 60s sleep; abort so a quick end/start cannot leave two loops
+            if let Some(task) = notify_task.take() {
+                task.abort();
+            }
 
             let can_notify = previous_meeting_status || first_open;
             if previous_meeting_status {
@@ -163,6 +171,44 @@ fn parse_args() -> Config {
     }
 }
 
+#[cfg(target_os = "macos")]
+const PMSET_POLL_INTERVAL: Duration = Duration::from_secs(10);
+
+#[cfg(target_os = "macos")]
+async fn pmset_monitoring(tx: tokio::sync::mpsc::Sender<bool>) {
+    let mut last_status: Option<bool> = None;
+    loop {
+        match tokio::process::Command::new("/usr/bin/pmset")
+            .args(["-g", "assertions"])
+            .output()
+            .await
+        {
+            Ok(output) if output.status.success() => {
+                let Some(in_call) = utils::assertions::teams_call_in_progress(
+                    &String::from_utf8_lossy(&output.stdout),
+                ) else {
+                    error!("Unexpected pmset output, keeping previous status");
+                    tokio::time::sleep(PMSET_POLL_INTERVAL).await;
+                    continue;
+                };
+                debug!("Teams call in progress: {}", in_call);
+                // Send only on change so the main loop does not re-notify on every poll
+                if last_status != Some(in_call) {
+                    if tx.send(in_call).await.is_err() {
+                        error!("Failed to send meeting status update.");
+                        return;
+                    }
+                    last_status = Some(in_call);
+                }
+            }
+            Ok(output) => error!("pmset exited with {}", output.status),
+            Err(e) => error!("Failed to run pmset: {}", e),
+        }
+        tokio::time::sleep(PMSET_POLL_INTERVAL).await;
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
 async fn meeting_monitoring(ws_url: String, tx: tokio::sync::mpsc::Sender<bool>) {
     loop {
         let url = Url::parse(&ws_url).expect("Failed to parse URL");
